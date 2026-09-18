@@ -1,0 +1,25 @@
+{
+  "name": "cursor-bridge",
+  "version": "2.0.0",
+  "description": "HTTP + SSE bridge in front of the Cursor Agent CLI, on the shared agent-bridge contract (shaper-bridge/v1)",
+  "type": "module",
+  "bin": {
+    "cursor-bridge": "bin/cursor-bridge.mjs"
+  },
+  "scripts": {
+    "start": "node --env-file-if-exists=.env bin/cursor-bridge.mjs",
+    "test": "node --test test/*.test.mjs",
+    "test:cli": "node scripts/live-test.mjs"
+  },
+  "engines": {
+    "node": ">=22.9"
+  },
+  "license": "CC-BY-SA-4.0",
+  "files": [
+    "bin",
+    "src",
+    "README.md",
+    "LICENSE",
+    "AUTHORS.md"
+  ]
+}

@@ -1,0 +1,7 @@
+{"type":"system","subtype":"init","apiKeySource":"env","cwd":"/workspace/demo","session_id":"8a230f3f-0817-4025-81a1-fe05855b5db4","model":"Composer 2.5","permissionMode":"default"}
+{"type":"user","message":{"role":"user","content":[{"type":"text","text":"What was the byte count you found in the previous turn? Answer with the number only."}]},"session_id":"8a230f3f-0817-4025-81a1-fe05855b5db4"}
+{"type":"thinking","subtype":"delta","text":"The byte count was 11.","session_id":"8a230f3f-0817-4025-81a1-fe05855b5db4","timestamp_ms":1789710705608}
+{"type":"thinking","subtype":"completed","session_id":"8a230f3f-0817-4025-81a1-fe05855b5db4","timestamp_ms":1789710705612}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"11"}]},"session_id":"8a230f3f-0817-4025-81a1-fe05855b5db4","timestamp_ms":1789710705612}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"11"}]},"session_id":"8a230f3f-0817-4025-81a1-fe05855b5db4"}
+{"type":"result","subtype":"success","duration_ms":2413,"duration_api_ms":2413,"is_error":false,"result":"11","session_id":"8a230f3f-0817-4025-81a1-fe05855b5db4","request_id":"ae83e8fc-508b-4176-9e9e-0cacb617f406","usage":{"inputTokens":9863,"outputTokens":39,"cacheReadTokens":3872,"cacheWriteTokens":0}}
