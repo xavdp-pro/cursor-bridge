@@ -12,6 +12,9 @@
  *   scenario:silent     exit 0 with no output at all
  *   scenario:is-error   a result line with is_error: true
  *   scenario:slow       init line, a grandchild `sleep`, then waits to be killed
+ *   scenario:drip       init line, then one delta and a result 700 ms later
+ *   scenario:trap       init line, a grandchild shell that ignores SIGTERM
+ *   scenario:escape     init line, a grandchild in its own session that keeps stdout open
  *
  * FAKE_ARGV_LOG     append each argv as one JSON line
  * FAKE_CHILD_PID    write the grandchild pid here (scenario:slow)
@@ -86,6 +89,28 @@ switch (scenario) {
     out(init);
     const child = spawn('sleep', ['60'], { stdio: 'ignore' });
     if (process.env.FAKE_CHILD_PID) fs.writeFileSync(process.env.FAKE_CHILD_PID, String(child.pid));
+    setInterval(() => {}, 1000);
+    break;
+  }
+  case 'drip':
+    out(init);
+    setTimeout(() => {
+      out({ type: 'assistant', timestamp_ms: 1, message: { role: 'assistant', content: [{ type: 'text', text: 'late' }] }, session_id: sessionId });
+      out({ type: 'result', subtype: 'success', is_error: false, result: 'late', session_id: sessionId, duration_ms: 5 });
+    }, 700);
+    break;
+  case 'trap': {
+    out(init);
+    const child = spawn('sh', ['-c', 'trap "" TERM; sleep 60 & wait'], { stdio: 'ignore' });
+    if (process.env.FAKE_CHILD_PID) fs.writeFileSync(process.env.FAKE_CHILD_PID, String(child.pid));
+    setInterval(() => {}, 1000);
+    break;
+  }
+  case 'escape': {
+    out(init);
+    const child = spawn('sleep', ['60'], { stdio: ['ignore', 'inherit', 'inherit'], detached: true });
+    if (process.env.FAKE_CHILD_PID) fs.writeFileSync(process.env.FAKE_CHILD_PID, String(child.pid));
+    child.unref();
     setInterval(() => {}, 1000);
     break;
   }

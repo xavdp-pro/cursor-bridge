@@ -9,7 +9,8 @@
   "scripts": {
     "start": "node --env-file-if-exists=.env bin/cursor-bridge.mjs",
     "test": "node --test test/*.test.mjs",
-    "test:cli": "node scripts/live-test.mjs"
+    "test:cli": "node scripts/live-test.mjs",
+    "bench:workspace-config": "node scripts/bench-workspace-config.mjs"
   },
   "engines": {
     "node": ">=22.9"

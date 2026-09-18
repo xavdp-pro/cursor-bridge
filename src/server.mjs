@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import http from 'node:http';
 import path from 'node:path';
 import { bridgeStatus } from './contract.mjs';
-import { BridgeError } from './bridge.mjs';
+import { BridgeError, isInside } from './bridge.mjs';
 
 export const SERVICE = 'cursor-bridge';
 export const VERSION = '2.0.0';
@@ -34,20 +34,33 @@ function send(res, status, body) {
   res.end(payload);
 }
 
-function readJson(req) {
+/**
+ * Reads a JSON body of at most `maxBytes`. A larger body is drained, not cut:
+ * destroying the socket mid-upload makes the client see a connection reset
+ * instead of the 413 it can show. Past a hard cap the socket is dropped.
+ */
+function readJson(req, maxBytes = MAX_BODY_BYTES) {
   return new Promise((resolve, reject) => {
+    const drainCap = maxBytes * 2 + 16 * 1024 * 1024;
     let size = 0;
+    let tooLarge = false;
     const chunks = [];
     req.on('data', (chunk) => {
       size += chunk.length;
-      if (size > MAX_BODY_BYTES) {
-        reject(new BridgeError(413, 'BODY_TOO_LARGE', `request body exceeds ${MAX_BODY_BYTES} bytes`));
+      if (size > drainCap) {
+        reject(new BridgeError(413, 'BODY_TOO_LARGE', `request body exceeds ${maxBytes} bytes`));
         req.destroy();
+        return;
+      }
+      if (size > maxBytes) {
+        tooLarge = true;
+        chunks.length = 0;
         return;
       }
       chunks.push(chunk);
     });
     req.on('end', () => {
+      if (tooLarge) return reject(new BridgeError(413, 'BODY_TOO_LARGE', `request body exceeds ${maxBytes} bytes`));
       if (!chunks.length) return resolve({});
       try {
         const parsed = JSON.parse(Buffer.concat(chunks).toString('utf8'));
@@ -60,6 +73,11 @@ function readJson(req) {
   });
 }
 
+/** Body limit of /api/upload: the file in base64 (4/3), plus room for the JSON around it. */
+export function uploadBodyLimit(maxUploadBytes) {
+  return Math.ceil(maxUploadBytes / 3) * 4 + 64 * 1024;
+}
+
 export function createServer({ bridge, token }) {
   const capabilities = {
     inject: true,
@@ -68,7 +86,7 @@ export function createServer({ bridge, token }) {
     stopRun: true,
     resetSession: true,
     bindWorkspace: true,
-    attachments: false,
+    attachments: true,
     modelSelection: true,
   };
 
@@ -98,6 +116,7 @@ export function createServer({ bridge, token }) {
         model: cfg.model,
         approval: cfg.approval,
         sandbox: cfg.sandbox || 'cli-default',
+        approve_mcps: cfg.approveMcps,
         runs_active: bridge.runs.size,
         conversations: Object.keys(bridge.conversations).length,
       }));
@@ -116,7 +135,9 @@ export function createServer({ bridge, token }) {
     }
 
     if (p === '/api/conversations' && req.method === 'GET') {
-      return send(res, 200, { ok: true, conversations: bridge.listConversations() });
+      // `registered` is the helm-console shape; `conversations` is the full
+      // bridge shape. Both describe the same conversations.
+      return send(res, 200, { ok: true, conversations: bridge.listConversations(), registered: bridge.registered() });
     }
 
     if (p === '/api/events' && req.method === 'GET') {
@@ -141,8 +162,50 @@ export function createServer({ bridge, token }) {
       return undefined;
     }
 
+    if (p === '/api/fs/list' && req.method === 'GET') {
+      // Directory listing for a workspace picker (helm console), bounded to
+      // the allowed roots. Without `path`, the roots themselves. Lists real
+      // subdirectories only (no symlinks), never dotfiles.
+      const roots = bridge.realRoots();
+      const rawPath = String(url.searchParams.get('path') || '').trim();
+      if (!rawPath) {
+        return send(res, 200, { ok: true, path: null, roots, entries: roots.map((r) => ({ name: r, path: r, dir: true })) });
+      }
+      if (!rawPath.startsWith('/')) {
+        throw new BridgeError(400, 'ABSOLUTE_PATH_REQUIRED', 'path must be absolute');
+      }
+      if (rawPath.includes('\0')) throw new BridgeError(400, 'INVALID_PATH', 'path must not contain a NUL byte');
+      // normalize() removes `..` segments; a name such as `a..b` is kept.
+      const absPath = path.posix.normalize(rawPath.replace(/\\/g, '/'));
+      const lexical = [...new Set([...bridge.config.allowedRoots, ...roots])];
+      if (!lexical.some((r) => isInside(absPath, r))) {
+        throw new BridgeError(403, 'WORKSPACE_OUTSIDE_ROOTS', `${absPath} is outside the allowed roots (CURSOR_BRIDGE_ALLOWED_ROOTS)`);
+      }
+      let real;
+      try {
+        real = fs.realpathSync(absPath);
+      } catch {
+        throw new BridgeError(404, 'NOT_FOUND', `no such directory: ${absPath}`);
+      }
+      if (!bridge.insideRoots(real)) {
+        throw new BridgeError(403, 'WORKSPACE_OUTSIDE_ROOTS', `${absPath} resolves outside the allowed roots`);
+      }
+      if (!fs.statSync(real).isDirectory()) throw new BridgeError(400, 'NOT_A_DIRECTORY', `not a directory: ${absPath}`);
+      const entries = fs.readdirSync(real, { withFileTypes: true })
+        .filter((e) => e.isDirectory() && !e.name.startsWith('.'))
+        .map((e) => ({ name: e.name, path: path.posix.join(real, e.name), dir: true }))
+        .sort((a, b) => a.name.localeCompare(b.name))
+        .slice(0, 500);
+      return send(res, 200, { ok: true, path: real, entries });
+    }
+
     if (req.method !== 'POST') {
       return send(res, 404, { ok: false, error: `no route ${req.method} ${p}`, code: 'NOT_FOUND' });
+    }
+
+    if (p === '/api/upload') {
+      const body = await readJson(req, uploadBodyLimit(bridge.config.maxUploadBytes));
+      return send(res, 200, { ok: true, ...bridge.saveAttachment(body) });
     }
 
     const body = await readJson(req);
@@ -151,6 +214,9 @@ export function createServer({ bridge, token }) {
       const result = bridge.inject(body);
       return send(res, 200, { ok: true, ...result });
     }
+    if (p === '/api/conversations/create') {
+      return send(res, 200, { ok: true, ...bridge.create(body) });
+    }
     if (p === '/api/conversations/stop') {
       const stopped = bridge.stop({ conversation: body.conversation, all: body.all === true });
       return send(res, 200, { ok: true, stopped });
@@ -158,6 +224,10 @@ export function createServer({ bridge, token }) {
     if (p === '/api/conversations/reset') {
       const known = bridge.reset(body.conversation);
       return send(res, 200, { ok: true, reset: known });
+    }
+    if (p === '/api/conversations/workspace') {
+      const { conversation, workspace } = body;
+      return send(res, 200, { ok: true, ...bridge.setWorkspace(conversation, workspace) });
     }
     if (p === '/api/conversations/delete') {
       const known = bridge.delete(body.conversation);
