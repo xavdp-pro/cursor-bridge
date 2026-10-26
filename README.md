@@ -374,3 +374,7 @@ It spends a little quota.
 ## License
 
 [CC BY-SA 4.0](LICENSE). Credits in [AUTHORS.md](AUTHORS.md).
+
+## Dedication
+
+[Personal dedication by Xavier de Poorter](DEDICATION.md).
