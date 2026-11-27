@@ -382,3 +382,11 @@ It spends a little quota.
 ## Work with Xavier de Poorter
 
 I design and build infrastructure, custom applications and SaaS products. If you’re starting a project or need help with an existing system, email me directly at [xavier@xavdp.pro](mailto:xavier@xavdp.pro). A few lines about what you want to build or improve are enough. [Explore my work](https://xavdp.pro/).
+
+---
+
+## Support
+
+If you find this project useful and would like to support its development, you can buy me a coffee:
+
+[![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20A%20Coffee-support-FFDD00?style=for-the-badge&logo=buy-me-a-coffee&logoColor=black)](https://buymeacoffee.com/xavdp)
